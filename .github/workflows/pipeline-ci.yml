@@ -1,0 +1,57 @@
+name: Pipeline CI
+
+# 控制台服务的基础检查：语法 + 启动 + 端点冒烟测试
+
+on:
+  push:
+    paths:
+      - 'server.js'
+      - 'dashboard.html'
+      - 'config.json'
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax check
+        run: node --check server.js
+
+      - name: Boot server & smoke test
+        run: |
+          cp state.json.example state.json
+          node server.js &
+          SERVER_PID=$!
+          sleep 2
+
+          # 端点冒烟测试
+          echo "== /api/state =="
+          curl -sf http://127.0.0.1:8765/api/state | head -c 200; echo
+
+          echo "== /api/config =="
+          curl -sf http://127.0.0.1:8765/api/config | head -c 200; echo
+
+          echo "== /api/stage (POST) =="
+          curl -sf -X POST http://127.0.0.1:8765/api/stage \
+            -H 'Content-Type: application/json' \
+            -d '{"stageId":"review","status":"done","detail":"CI test","progress":100}'; echo
+
+          echo "== /api/render (POST) =="
+          curl -sf -X POST http://127.0.0.1:8765/api/render \
+            -H 'Content-Type: application/json' \
+            -d '{"doneFrames":100}'; echo
+
+          echo "== dashboard.html =="
+          curl -sf http://127.0.0.1:8765/ | grep -q '流水线控制台' && echo "dashboard OK"
+
+          kill $SERVER_PID
+          echo "== all smoke tests passed =="
+        shell: bash

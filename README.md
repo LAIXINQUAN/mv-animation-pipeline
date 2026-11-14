@@ -91,3 +91,28 @@ project/
 ## License
 
 MIT
+
+## CI / 工作流
+
+| 工作流 | 触发 | 说明 |
+|---|---|---|
+| `render-demo.yml` | 手动 / push 到 server.js·dashboard.html | 用 puppeteer 渲染一帧自包含 demo 场景，验证渲染链路 |
+| `pipeline-ci.yml` | push / PR | 语法检查 + 服务启动 + 5 端点冒烟测试 |
+
+> 完整 MV 渲染依赖本机 Chrome 与版权音乐，CI 只验证管线可运行性，不跑全片渲染。
+
+## 文件清单
+
+```
+pipeline/
+├─ server.js              零依赖 HTTP 服务（SSE + 状态机 + schema 兜底）
+├─ dashboard.html         像素风仪表盘
+├─ config.json            子 Agent 模型白名单 + 默认模型
+├─ state.json.example     状态模板（运行时生成 state.json，已 gitignore）
+├─ README.md              本文档
+├─ LICENSE                MIT
+├─ .gitignore
+└─ .github/workflows/
+   ├─ render-demo.yml     渲染链路验证
+   └─ pipeline-ci.yml     服务冒烟测试
+```
