@@ -23,6 +23,6 @@
   ],
   "defaultModel": {
     "producer": "deepseek-v4-pro",
-    "reviewer": "deepseek-flash"
+    "reviewer": "deepseek-v4-pro"
   }
 }
