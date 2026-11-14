@@ -1,0 +1,11 @@
+# 运行时状态（保留 state.json.example 作为模板）
+state.json
+
+# 渲染帧与成片（体积大，不入库）
+frames/
+*.mp4
+*.png
+
+# 系统文件
+.DS_Store
+Thumbs.db

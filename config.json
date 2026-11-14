@@ -1,0 +1,28 @@
+{
+  "models": [
+    {
+      "id": "deepseek-v4-pro",
+      "name": "DeepSeek V4 Pro",
+      "note": "当前默认（综合能力强）"
+    },
+    {
+      "id": "deepseek-v4",
+      "name": "DeepSeek V4",
+      "note": "标准版"
+    },
+    {
+      "id": "deepseek-flash",
+      "name": "DeepSeek Flash",
+      "note": "轻快（适合简单镜头）"
+    },
+    {
+      "id": "deepseek-r1",
+      "name": "DeepSeek R1",
+      "note": "深度推理（适合复杂分镜）"
+    }
+  ],
+  "defaultModel": {
+    "producer": "deepseek-v4-pro",
+    "reviewer": "deepseek-flash"
+  }
+}

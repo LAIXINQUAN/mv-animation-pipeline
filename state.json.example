@@ -1,0 +1,24 @@
+{
+  "project": "Take Me Hand MV",
+  "updatedAt": "2026-11-15T00:00:00+08:00",
+  "pipeline": {
+    "stages": [
+      { "id": "direction", "name": "确立方向", "icon": "★", "status": "pending", "detail": "", "progress": 0 },
+      { "id": "produce", "name": "生产镜头", "icon": "▣", "status": "pending", "detail": "", "progress": 0 },
+      { "id": "review", "name": "独立审核", "icon": "◆", "status": "pending", "detail": "", "progress": 0 },
+      { "id": "assemble", "name": "汇总放行", "icon": "▲", "status": "pending", "detail": "", "progress": 0 },
+      { "id": "render", "name": "渲染交付", "icon": "●", "status": "pending", "detail": "", "progress": 0 }
+    ]
+  },
+  "current": {
+    "agent": "—",
+    "role": "—",
+    "task": "—",
+    "scene": "—",
+    "sceneFrame": null,
+    "frameTime": null
+  },
+  "model": { "producer": "deepseek-v4-pro", "reviewer": "deepseek-v4-pro" },
+  "render": { "fps": 24, "totalFrames": 6240, "doneFrames": 0, "startedAt": null, "lastFrame": null },
+  "log": []
+}
