@@ -3,6 +3,7 @@ name: Pipeline CI
 # 控制台服务的基础检查：语法 + 启动 + 端点冒烟测试
 
 on:
+  workflow_dispatch:   # 手动触发
   push:
     paths:
       - 'server.js'
