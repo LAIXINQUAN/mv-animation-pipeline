@@ -1,4 +1,4 @@
-﻿---
+---
 name: video-animation-pipeline
 description: 主 AI 统筹、多子 Agent 并行生产、独立审核、逐帧渲染的动画/MV/短片生产流水线；含五阶段状态机、像素风实时控制台，以及 init/render/compose/verify 四个可直接运行的命令行工具。当用户要做动画、MV、短片、宣传片，或要把长片拆成镜头并行生产、要逐帧渲染成 mp4、要审核镜头质量时使用。
 license: MIT
