@@ -1,3 +1,8 @@
+---
+name: mv-animation-pipeline
+description: MV/动画短片制作流水线：主 AI 统筹定方向与分镜，多子 Agent 并行生产镜头单元，独立审核 Agent 五维把关，最后逐帧确定性渲染并合成混音交付；自带 init/render/compose/verify 四个 Node 命令行工具和像素风实时控制台。用户要求制作动画、MV、短片、宣传片，需要把长动画拆分成可并行镜头生产、做分镜表与审核迭代、逐帧截图渲染成片，或查看流水线实时进度时使用。
+---
+
 # SKILL · 视频动画制作多 Agent 流水线
 
 > 一套「主 AI 统筹 + 多子 Agent 并行生产 + 独立审核 + 逐帧渲染」的动画生产流水线，附带像素风实时控制台。
@@ -72,12 +77,12 @@ project/
 └─ deliver/           成片 + 音频 + 源文件 + 说明
 ```
 
-## 八、流水线控制台（pipeline/ 目录，本 SKILL 的可运行实现）
+## 八、流水线控制台（本 SKILL 根目录，可直接运行）
 
 ### 8.1 启动
 
 ```bash
-cd pipeline
+cd <本 SKILL 目录>
 node server.js          # http://127.0.0.1:8765
 ```
 
@@ -88,7 +93,7 @@ node server.js          # http://127.0.0.1:8765
 ### 8.2 架构
 
 ```
-pipeline/
+<本 SKILL 目录>/
 ├─ server.js        # 零依赖 HTTP 服务（SSE + 状态机 + schema 兜底 + 日志环形缓冲）
 ├─ dashboard.html   # 像素风仪表盘（SSE 实时 + 日志过滤 + 断线重连）
 ├─ config.json      # 子 Agent 模型白名单 + 默认模型
