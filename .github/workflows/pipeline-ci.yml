@@ -1,6 +1,6 @@
 name: Pipeline CI
 
-# 控制台服务的基础检查：语法 + 启动 + 端点冒烟测试
+# 工具链与控制台的基础检查：语法 + 启动 + 端点冒烟测试
 
 on:
   workflow_dispatch:   # 手动触发
@@ -9,6 +9,10 @@ on:
       - 'server.js'
       - 'dashboard.html'
       - 'config.json'
+      - 'init.js'
+      - 'render.js'
+      - 'compose.js'
+      - 'verify.js'
   pull_request:
 
 jobs:
@@ -24,7 +28,27 @@ jobs:
           node-version: '22'
 
       - name: Syntax check
-        run: node --check server.js
+        run: |
+          for f in server.js render.js compose.js verify.js init.js; do
+            echo "== $f =="
+            node --check $f
+          done
+
+      - name: init.js smoke test
+        run: |
+          node init.js /tmp/ci-proj --name="CI Smoke" --duration=6 --fps=24
+          test -f /tmp/ci-proj/brief.md
+          test -f /tmp/ci-proj/engine/scene.html
+          test -f /tmp/ci-proj/manifest.json
+          grep -q 'window.__seek' /tmp/ci-proj/engine/scene.html
+          grep -q 'window.__duration' /tmp/ci-proj/engine/scene.html
+          echo "init OK"
+
+      - name: verify.js catches bad input
+        run: |
+          # 故意不给帧/成片，只验页面与时间线（应全过）
+          node verify.js --scene=/tmp/ci-proj/engine/scene.html \
+                         --expect-duration=6 --fps=24 && echo "verify OK"
 
       - name: Boot server & smoke test
         run: |
@@ -33,7 +57,6 @@ jobs:
           SERVER_PID=$!
           sleep 2
 
-          # 端点冒烟测试
           echo "== /api/state =="
           curl -sf http://127.0.0.1:8765/api/state | head -c 200; echo
 
@@ -48,7 +71,7 @@ jobs:
           echo "== /api/render (POST) =="
           curl -sf -X POST http://127.0.0.1:8765/api/render \
             -H 'Content-Type: application/json' \
-            -d '{"doneFrames":100}'; echo
+            -d '{"doneFrames":100}' ; echo
 
           echo "== dashboard.html =="
           curl -sf http://127.0.0.1:8765/ | grep -q '流水线控制台' && echo "dashboard OK"

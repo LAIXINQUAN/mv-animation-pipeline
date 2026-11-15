@@ -1,7 +1,7 @@
 name: Render Demo Frame
 
-# 演示：用 puppeteer 渲染一帧 demo 场景，验证渲染链路可用
-# 说明：完整 MV 依赖本机 Chrome 与版权音乐，故 CI 只跑一个自包含的 demo 场景验证管线
+# 全链路冒烟：init 建骨架 → render 逐帧 → compose 合成 → verify 自检
+# 说明：完整 MV 依赖本机 Chrome 与版权音乐，CI 只验证管线可运行性，不跑全片渲染。
 
 on:
   workflow_dispatch:   # 手动触发
@@ -9,6 +9,10 @@ on:
     paths:
       - 'server.js'
       - 'dashboard.html'
+      - 'init.js'
+      - 'render.js'
+      - 'compose.js'
+      - 'verify.js'
 
 jobs:
   render-demo:
@@ -27,38 +31,44 @@ jobs:
           npm init -y > /dev/null 2>&1
           npm install puppeteer@latest
 
-      - name: Render demo frame
+      - name: Install ffmpeg
         run: |
-          cat > demo-scene.html << 'EOF'
-          <!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#1a1b2e}</style></head>
-          <body><script>
-          const c=document.createElement('canvas');c.width=640;c.height=360;document.body.appendChild(c);
-          const g=c.getContext('2d');
-          g.fillStyle='#3D3668';g.fillRect(0,0,640,360);       // 紫罗兰夜空
-          g.fillStyle='#775384';g.fillRect(0,240,640,120);      // 城市剪影
-          g.fillStyle='#F9D285';g.fillRect(80,260,30,34);       // 亮窗
-          g.fillStyle='#D97757';g.fillRect(300,200,54,28);      // Clawd 躯干
-          g.fillStyle='#141413';g.fillRect(312,208,10,10);      // 左眼
-          g.fillStyle='#141413';g.fillRect(332,208,10,10);      // 右眼
-          g.fillStyle='#F9E2A0';g.fillRect(500,40,32,32);       // 弯月
-          </script></body></html>
-          EOF
-          node -e "
-            const puppeteer = require('puppeteer');
-            (async()=>{
-              const b = await puppeteer.launch({headless:'new',args:['--no-sandbox']});
-              const p = await b.newPage();
-              await p.setViewport({width:640,height:360});
-              await p.goto('file://'+process.cwd()+'/demo-scene.html',{waitUntil:'networkidle0'});
-              await p.screenshot({path:'demo-frame.png'});
-              await b.close();
-              console.log('demo frame rendered: demo-frame.png');
-            })();
-          "
-        shell: bash
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
 
-      - name: Upload artifact
+      - name: Tool syntax check
+        run: |
+          for f in render.js compose.js verify.js init.js server.js; do
+            echo "== $f =="
+            node --check $f
+          done
+
+      - name: Init project skeleton
+        run: node init.js demo --name="CI Demo" --duration=6 --fps=24
+
+      - name: Render frames
+        run: node render.js demo/engine/scene.html --end=6 --fps=24 --out=demo/frames
+
+      - name: Make silent track
+        run: |
+          ffmpeg -y -v error -f lavfi -i "sine=frequency=440:duration=6" \
+                 -c:a libmp3lame -b:a 128k demo/audio/bgm.mp3
+
+      - name: Compose video (with audio)
+        run: |
+          node compose.js --frames=demo/frames --fps=24 \
+                          --audio=demo/audio/bgm.mp3 --out=demo/deliver/video.mp4
+
+      - name: Verify all
+        run: |
+          node verify.js --scene=demo/engine/scene.html --frames=demo/frames \
+                         --video=demo/deliver/video.mp4 \
+                         --expect-duration=6 --fps=24 --audio-required=true
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: demo-frame
-          path: demo-frame.png
+          name: demo-output
+          path: |
+            demo/deliver/video.mp4
+            demo/frames/f_00060.png

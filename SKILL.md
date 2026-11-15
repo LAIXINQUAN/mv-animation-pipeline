@@ -163,3 +163,34 @@ UI 保存后写入 `config.json.defaultModel`。主 AI 下次 spawn/派单时读
 5. **阶段⑤**：逐帧渲染 → ffmpeg 合成 → 混音 → 质检 → 交付
 
 > 渲染管线参考：puppeteer（或 Chrome headless）逐帧截图 + ffmpeg 合成 H.264/yuv444p + AAC 192k。
+
+## 十一、工具链（可直接跑的四条命令）
+
+阶段①⑤不必手搓脚本，本目录自带四个工具，按顺序跑即可：
+
+```bash
+# ① 建骨架（brief.md / shots.csv / manifest.json / engine/scene.html / review / audio / frames / deliver）
+node init.js my-mv --name="我的 MV" --duration=90 --fps=30
+
+# ⑤-1 逐帧渲染（页面须暴露 __ready / __duration / __seek(t)）
+node render.js my-mv/engine/scene.html --end=90 --fps=30 --out=my-mv/frames
+
+# ⑤-2 合成 + 混音
+node compose.js --frames=my-mv/frames --fps=30 --audio=my-mv/audio/bgm.mp3 --out=my-mv/deliver/video.mp4
+
+# ⑤-3 自检（时间线 / 五红线 / 帧序列 / 成片参数；退出码 0 = 可交付）
+node verify.js --scene=my-mv/engine/scene.html --frames=my-mv/frames \
+               --video=my-mv/deliver/video.mp4 --expect-duration=90 --fps=30
+```
+
+| 工具 | 关键参数 | 说明 |
+|---|---|---|
+| `init.js` | `--name --duration --fps --w --h` | 生成**纯 Canvas 2D、零外部依赖**的 `scene.html` 模板，占位时间线自动铺满时长 |
+| `render.js` | `--start --end --fps --out --chrome --report` | 只调 `__seek(t)`，不读系统时间；`--report` 可把进度推给控制台 |
+| `compose.js` | `--frames --fps --audio --out --crf --pix-fmt` | 已处理中文路径与 aac experimental 两个坑 |
+| `verify.js` | `--scene --frames --video --expect-duration --audio-required` | 对应《交接说明》6.1 / 6.4 全部检查项 |
+
+**渲染器的进程约定**：`render.js` 在渲染结束时会检查运行期 `pageerror` 与外部 `requestfailed`，有则退出码 1 —— 这是红线 3（禁止网络请求）的**运行时**佐证，比静态扫 `http://` 更可靠。
+
+**跨平台注意**：`render.js` 优先用 `puppeteer` 自带 Chromium；只有 `puppeteer-core` 时自动找系统 Chrome/Edge（含 macOS / Linux 常见路径），也可用 `--chrome=<路径>` 或 `CHROME_PATH` 显式指定。
+
