@@ -13,6 +13,9 @@ on:
       - 'render.js'
       - 'compose.js'
       - 'verify.js'
+      - 'SKILL.md'          # 有 frontmatter 校验，改它必须触发
+      - 'state.json.example'
+      - '.github/workflows/pipeline-ci.yml'
   pull_request:
 
 jobs:
