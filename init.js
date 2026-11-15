@@ -12,7 +12,7 @@
  *   ├─ manifest.json       清单骨架
  *   ├─ engine/
  *   │  ├─ scene.html       可运行的最小时间线模板（零外部依赖，跑通即能渲染）
- *   │  └─ shots.js         时间线源清单
+ *   │  └─ shots.js         时间线源清单（scene.html 用 <script src> 加载它）
  *   ├─ review/             审核报告目录
  *   ├─ audio/              音轨目录
  *   ├─ frames/             帧输出
@@ -210,13 +210,6 @@ function shotExample(t, lf) {
   rect(bx + 10, by - 14, 20, 20);                      // 右眼
 }
 
-// ---- 时间线兜底：铺满整段时长（每镜 3s）----
-if (!SHOTS.length) {
-  for (let s = 0; s < DUR - 1e-6; s += 3.0) {
-    addShot(s, Math.min(s + 3.0, DUR), (t, lf) => shotExample(t, lf));
-  }
-}
-
 // ---- 主绘制：给定 t，画出该时刻的画面（纯函数，无副作用）----
 function drawScene(t) {
   const lf = t * FPS;
@@ -229,6 +222,19 @@ function drawScene(t) {
 // ---- 渲染器接口（约定，不可改名）----
 window.__duration = DUR;
 window.__seek = drawScene;
+</script>
+
+<!-- 时间线写在外部 shots.js：改分镜只动它，不必碰引擎；
+     删掉这一行也能跑（下面有内置占位时间线兜底） -->
+<script src="shots.js"></script>
+
+<script>
+// ---- 兜底：shots.js 缺失或为空时，自动铺满整段时长（每镜 3s）----
+if (!SHOTS.length) {
+  for (let s = 0; s < DUR - 1e-6; s += 3.0) {
+    addShot(s, Math.min(s + 3.0, DUR), (t, lf) => shotExample(t, lf));
+  }
+}
 
 // ---- 就绪：先画首帧，再置 ready（避免截图截到空白）----
 drawScene(0);
@@ -258,7 +264,7 @@ w('deliver/README.md', `# 交付目录
 console.log(`
 下一步：
   1. 填 brief.md 的六项决策，写 shots.csv 分镜表
-  2. 改 engine/shots.js + engine/scene.html 的时间线
+  2. 改 engine/shots.js 的时间线（scene.html 用 <script src> 自动加载它，不必碰引擎）
   3. node render.js engine/scene.html --end=${DURATION} --fps=${FPS} --out=frames
   4. node compose.js --frames=frames --fps=${FPS} --audio=audio/bgm.mp3 --out=deliver/video.mp4
   5. node verify.js --scene=engine/scene.html --frames=frames --video=deliver/video.mp4 --expect-duration=${DURATION}

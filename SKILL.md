@@ -100,6 +100,8 @@ node server.js          # http://127.0.0.1:8765
 └─ state.json.example  # 状态模板（运行时生成 state.json，已 gitignore）
 ```
 
+> 帧代理（看板里的「实时场景帧」）默认读 `<本 SKILL 目录>/../frames`。项目帧不在那儿时，用 `node server.js --frames=<项目>/frames` 或环境变量 `FRAMES_DIR` 指定；png / jpg 都支持。
+
 ### 8.3 UI 功能清单
 
 | 区块 | 内容 |
@@ -118,10 +120,12 @@ node server.js          # http://127.0.0.1:8765
 | GET | `/api/state` | 全量状态 |
 | GET | `/api/stream` | SSE 实时流（`state`/`log`/`render` 事件）|
 | GET/POST | `/api/config` | 模型配置读写（合并式，不抹白名单）|
+| POST | `/api/project` | 改项目名 `{project}` |
+| POST | `/api/current` | 改「现在正在干什么」`{agent, role, task, scene, sceneFrame}` |
 | POST | `/api/log` | 追加日志 `{level, msg}` |
 | POST | `/api/stage` | 更新阶段 `{stageId, status, detail, progress}` |
 | POST | `/api/render` | 汇报渲染进度 `{doneFrames}` |
-| GET | `/frames/xxx.png` | 渲染帧图片代理 |
+| GET | `/frames/xxx.png` | 渲染帧图片代理（png / jpg）|
 
 ### 8.5 子 Agent / 脚本接入约定
 
@@ -139,6 +143,14 @@ curl -X POST http://127.0.0.1:8765/api/stage -H 'Content-Type: application/json'
 # 汇报渲染进度
 curl -X POST http://127.0.0.1:8765/api/render -H 'Content-Type: application/json' \
   -d '{"doneFrames":3120}'
+
+# 改项目名（不需要停服务）
+curl -X POST http://127.0.0.1:8765/api/project -H 'Content-Type: application/json' \
+  -d '{"project":"Fractures MV"}'
+
+# 改看板上的「现在正在干什么」
+curl -X POST http://127.0.0.1:8765/api/current -H 'Content-Type: application/json' \
+  -d '{"agent":"Doubao","role":"总导演","task":"逐帧渲染","scene":"Fractures · 24fps"}'
 ```
 
 ### 8.6 模型切换生效方式
@@ -178,7 +190,7 @@ UI 保存后写入 `config.json.defaultModel`。主 AI 下次 spawn/派单时读
 node init.js my-mv --name="我的 MV" --duration=90 --fps=30
 
 # ⑤-1 逐帧渲染（页面须暴露 __ready / __duration / __seek(t)）
-node render.js my-mv/engine/scene.html --end=90 --fps=30 --out=my-mv/frames
+node render.js my-mv/engine/scene.html --end=90 --fps=30 --out=my-mv/frames --quality=jpeg
 
 # ⑤-2 合成 + 混音
 node compose.js --frames=my-mv/frames --fps=30 --audio=my-mv/audio/bgm.mp3 --out=my-mv/deliver/video.mp4
@@ -190,10 +202,14 @@ node verify.js --scene=my-mv/engine/scene.html --frames=my-mv/frames \
 
 | 工具 | 关键参数 | 说明 |
 |---|---|---|
-| `init.js` | `--name --duration --fps --w --h` | 生成**纯 Canvas 2D、零外部依赖**的 `scene.html` 模板，占位时间线自动铺满时长 |
-| `render.js` | `--start --end --fps --out --chrome --report` | 只调 `__seek(t)`，不读系统时间；`--report` 可把进度推给控制台 |
-| `compose.js` | `--frames --fps --audio --out --crf --pix-fmt` | 已处理中文路径与 aac experimental 两个坑 |
-| `verify.js` | `--scene --frames --video --expect-duration --audio-required` | 对应《交接说明》6.1 / 6.4 全部检查项 |
+| `init.js` | `--name --duration --fps --w --h` | 生成**纯 Canvas 2D、零外部依赖**的 `scene.html` + `shots.js`：时间线放 `shots.js`，页面用 `<script src>` 加载它；脚本缺失时页面自动回退到占位时间线 |
+| `render.js` | `--start --end --fps --out --quality --jpeg-quality --chrome --report` | 只调 `__seek(t)`，不读系统时间；`--report` 可把进度推给控制台 |
+| `compose.js` | `--frames --fps --audio --out --crf --pix-fmt --pattern` | 已处理中文路径与 aac experimental 两个坑；`--pattern` 可省略，按帧目录里的实际文件名自动识别 png/jpg |
+| `verify.js` | `--scene --frames --video --expect-duration --audio-required` | 对应《交接说明》6.1 / 6.4 全部检查项；还会检查页面 `<script src>` 引用的本地脚本 |
+
+**时间线写在哪**：`init.js` 生成的 `scene.html` 通过 `<script src="shots.js">` 加载时间线 —— 改分镜只动 `shots.js`，不必碰引擎。也可以把 `addShot(...)` 直接内联进 `scene.html`（此时删掉那行 script 引用），`verify.js` 两种都认。无论写在哪，**起止时间必须是字面量数字**（`addShot(0, 3.2, …)`），写成变量会被判成"未检测到时间线"。
+
+**渲染格式怎么选**：`--quality=png`（默认）像素最锐但慢，1080p 实测约 4.5 帧/秒、单帧约 700KB；`--quality=jpeg --jpeg-quality=92` 实测约 15 帧/秒、单帧约 90KB。**长片（>1000 帧）默认用 jpeg**，否则 245s / 24fps 一片要跑近 40 分钟、中间帧近 4GB；jpeg 中间帧经 H.264 编码后肉眼几乎无差。
 
 **渲染器的进程约定**：`render.js` 在渲染结束时会检查运行期 `pageerror` 与外部 `requestfailed`，有则退出码 1 —— 这是红线 3（禁止网络请求）的**运行时**佐证，比静态扫 `http://` 更可靠。
 

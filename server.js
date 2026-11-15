@@ -10,10 +10,20 @@ const CONFIG = path.join(ROOT, 'config.json');
 const DASH = path.join(ROOT, 'dashboard.html');
 const PORT = parseInt(process.env.PORT || '8765', 10);
 
+// 帧代理目录：--frames=<dir> > 环境变量 FRAMES_DIR > 技能目录的上一级/frames
+const FLAGS = {};
+for (const a of process.argv.slice(2)) {
+  const m = /^--([^=]+)=(.*)$/.exec(a);
+  if (m) FLAGS[m[1]] = m[2];
+}
+const FRAMES_DIR = path.resolve(FLAGS.frames || process.env.FRAMES_DIR || path.join(path.dirname(ROOT), 'frames'));
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
 };
@@ -40,7 +50,7 @@ let stateCacheTime = 0;
 
 // 默认 schema：缺字段自动补全，防止 state.json 被外部破坏后服务崩溃
 const DEFAULT_STATE = {
-  project: 'Take Me Hand MV',
+  project: '（未命名项目）',
   pipeline: {
     stages: [
       { id: 'direction', name: '确立方向', icon: '★', status: 'pending', detail: '', progress: 0 },
@@ -115,6 +125,34 @@ function setStage(stageId, status, detail, progress) {
   return { ok: true, stage: st };
 }
 
+// ---- 项目名 / 当前任务 ----
+function setProject(project) {
+  const s = ensureSchema(readJSON(STATE));
+  const name = String(project || '').trim();
+  if (!name) return { ok: false, error: 'project 不能为空' };
+  s.project = name;
+  s.updatedAt = new Date().toISOString();
+  writeJSON(STATE, s);
+  invalidate();
+  broadcast('state', s);
+  return { ok: true, project: s.project };
+}
+
+function setCurrent(patch) {
+  const s = ensureSchema(readJSON(STATE));
+  const KEYS = ['agent', 'role', 'task', 'scene', 'sceneFrame', 'frameTime'];
+  let touched = 0;
+  for (const k of KEYS) {
+    if (patch && patch[k] !== undefined) { s.current[k] = patch[k]; touched++; }
+  }
+  if (!touched) return { ok: false, error: `可用字段: ${KEYS.join(', ')}` };
+  s.updatedAt = new Date().toISOString();
+  writeJSON(STATE, s);
+  invalidate();
+  broadcast('state', s);
+  return { ok: true, current: s.current };
+}
+
 // ---- 渲染进度更新（高频，走轻量写盘 + SSE）----
 function reportProgress(doneFrames) {
   const s = ensureSchema(readJSON(STATE));
@@ -187,6 +225,42 @@ const server = http.createServer((req, res) => {
     }
   }
 
+  // ---- 项目名 ----
+  if (p === '/api/project' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { project } = JSON.parse(body);
+        const r = setProject(project);
+        if (r.ok) appendLog('info', `项目名 → ${r.project}`);
+        res.writeHead(r.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(r));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: String(e) }));
+      }
+    });
+    return;
+  }
+
+  // ---- 当前任务（agent/role/task/scene/sceneFrame/frameTime）----
+  if (p === '/api/current' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const r = setCurrent(JSON.parse(body));
+        res.writeHead(r.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(r));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: String(e) }));
+      }
+    });
+    return;
+  }
+
   // ---- 日志 ----
   if (p === '/api/log') {
     if (req.method === 'POST') {
@@ -248,12 +322,13 @@ const server = http.createServer((req, res) => {
     return res.end(fs.readFileSync(DASH, 'utf8'));
   }
   if (p.startsWith('/frames/')) {
-    const fp = path.join(path.dirname(ROOT), 'frames', path.basename(p));
-    if (fs.existsSync(fp)) {
-      res.writeHead(200, { 'Content-Type': MIME['.png'] });
+    const name = path.basename(p);
+    const fp = path.join(FRAMES_DIR, name);
+    if (fs.existsSync(fp) && fs.statSync(fp).isFile()) {
+      res.writeHead(200, { 'Content-Type': MIME[path.extname(name).toLowerCase()] || 'application/octet-stream' });
       return res.end(fs.readFileSync(fp));
     }
-    res.writeHead(404); return res.end('frame not found');
+    res.writeHead(404); return res.end('frame not found: ' + name);
   }
 
   res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -262,5 +337,6 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[pipeline] 控制台已启动 → http://127.0.0.1:${PORT}`);
+  console.log(`[pipeline] 帧代理目录 → ${FRAMES_DIR}`);
   appendLog('info', `流水线控制台 v2 启动 (port ${PORT}, SSE 实时推送)`);
 });

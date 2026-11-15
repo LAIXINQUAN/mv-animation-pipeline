@@ -38,6 +38,27 @@ function chk(ok, label, detail) {
   console.log(`${ok ? '[PASS]' : '[FAIL]'} ${label}${detail ? '  — ' + detail : ''}`);
 }
 
+// ---- 0. 收集页面引用的本地脚本 ----
+// 页面通过 <script src="shots.js"> 引用的同目录脚本，算页面的一部分：
+// 既要校验它真的存在（否则运行期直接空白），也要把它的代码并进红线与时间线扫描。
+function collectLocalScripts(scenePath, code) {
+  const dir = path.dirname(scenePath);
+  const refs = [...code.matchAll(/<script[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi)]
+    .map((m) => m[1])
+    .filter((u) => !/^(https?:)?\/\//i.test(u) && !/^data:/i.test(u));
+  const found = [];
+  const missing = [];
+  for (const r of refs) {
+    const p = path.resolve(dir, r.split('?')[0].split('#')[0]);
+    if (fs.existsSync(p)) found.push({ ref: r, path: p, code: fs.readFileSync(p, 'utf8') });
+    else missing.push(r);
+  }
+  return { found, missing };
+}
+
+let pageCode = '';
+const pageScripts = [];
+
 // ---- 1. 页面 ----
 if (SCENE) {
   console.log('\n== 页面检查 ==');
@@ -46,16 +67,26 @@ if (SCENE) {
   if (exists) {
     const size = fs.statSync(SCENE).size;
     chk(size > 0, '页面非 0 字节', `${(size / 1024).toFixed(1)} KB`);
-    const code = fs.readFileSync(SCENE, 'utf8');
+    pageCode = fs.readFileSync(SCENE, 'utf8');
+
+    // 引用的本地脚本必须真的存在
+    const { found, missing } = collectLocalScripts(SCENE, pageCode);
+    pageScripts.push(...found);
+    chk(missing.length === 0, '引用的本地脚本存在',
+      missing.length ? `缺失 ${missing.slice(0, 3).join(', ')}` : `${found.length} 个`);
+    if (found.length) console.log(`  外部脚本: ${found.map((f) => f.ref).join(', ')}`);
+
+    // 页面 + 外部脚本合并成一份代码做扫描
+    const all = [pageCode, ...found.map((f) => f.code)].join('\n');
 
     // 无外部网络依赖（排除注释里的说明性 URL）
-    const stripped = code.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const stripped = all.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     const net = (stripped.match(/https?:\/\/[^\s"'`)]+/g) || []).filter((u) => !u.includes('127.0.0.1') && !u.includes('localhost'));
     chk(net.length === 0, '无外部网络地址', net.length ? net.slice(0, 3).join(', ') : '');
 
-    chk(/window\.__duration\s*=/.test(code), '暴露 window.__duration');
-    chk(/window\.__seek\s*=/.test(code), '暴露 window.__seek');
-    chk(/__ready\s*=\s*true/.test(code), '暴露 window.__ready');
+    chk(/window\.__duration\s*=/.test(all), '暴露 window.__duration');
+    chk(/window\.__seek\s*=/.test(all), '暴露 window.__seek');
+    chk(/__ready\s*=\s*true/.test(all), '暴露 window.__ready');
 
     // 红线：随机数与时间依赖
     const rand = /Math\.random\s*\(/.test(stripped);
@@ -68,7 +99,8 @@ if (SCENE) {
 // ---- 2. 分镜表 / 时间线 ----
 if (SCENE && fs.existsSync(SCENE)) {
   console.log('\n== 时间线检查 ==');
-  const code = fs.readFileSync(SCENE, 'utf8');
+  // 时间线可以内联在 scene.html，也可以写在它引用的 shots.js —— 两边都算
+  const code = [pageCode, ...pageScripts.map((f) => f.code)].join('\n');
   const calls = [...code.matchAll(/addShot\(\s*([\d.]+)\s*,\s*([\d.]+)/g)].map((m) => [+m[1], +m[2]]);
   if (calls.length) {
     console.log(`  镜头数: ${calls.length}`);
@@ -143,6 +175,10 @@ if (VIDEO && fs.existsSync(VIDEO)) {
 }
 
 console.log('\n' + '='.repeat(56));
+if (!results.length) {
+  console.error('没有任何检查项被执行（至少给 --scene=<scene.html>）');
+  process.exit(2);
+}
 console.log(failed === 0 ? '全部通过，可以交付' : `存在 ${failed} 项未通过，先修复`);
 console.log('='.repeat(56));
 process.exit(failed === 0 ? 0 : 1);

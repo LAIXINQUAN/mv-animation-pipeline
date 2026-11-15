@@ -7,7 +7,7 @@
  *
  * 选项：
  *   --frames=frames            帧目录
- *   --pattern=f_%05d.png       ffmpeg 输入模式（与 render.js 的 prefix 对应）
+ *   --pattern=f_%05d.png       ffmpeg 输入模式（省略 = 按帧目录自动识别 png/jpg）
  *   --fps=24                   输入帧率
  *   --audio=audio.mp3          音轨（可省略 = 无音轨）
  *   --out=video.mp4            输出
@@ -33,7 +33,7 @@ for (const a of process.argv.slice(2)) {
 }
 
 const FRAMES = path.resolve(flags.frames || 'frames');
-const PATTERN = flags.pattern || 'f_%05d.png';
+let PATTERN = flags.pattern || null;
 const FPS = flags.fps || '24';
 const AUDIO = flags.audio ? path.resolve(flags.audio) : null;
 const OUT = path.resolve(flags.out || 'video.mp4');
@@ -50,6 +50,17 @@ if (!fs.existsSync(FRAMES)) {
 if (AUDIO && !fs.existsSync(AUDIO)) {
   console.error('音轨不存在: ' + AUDIO);
   process.exit(2);
+}
+
+// 未显式给 --pattern 时，按帧目录里的实际文件名自动推导（png/jpg 都认）
+if (!PATTERN) {
+  const imgs = fs.readdirSync(FRAMES).filter((f) => /\.(png|jpe?g)$/i.test(f)).sort();
+  if (!imgs.length) {
+    console.error('帧目录为空（找不到 png/jpg 帧）: ' + FRAMES);
+    process.exit(2);
+  }
+  PATTERN = imgs[0].replace(/(\d+)(\.(?:png|jpe?g))$/i, (_, d, ext) => `%0${d.length}d${ext}`);
+  console.log(`[compose] 自动识别帧模式: ${PATTERN}（来自 ${imgs[0]}）`);
 }
 
 const first = PATTERN.replace(/%0(\d)d/, (_, n) => String(START).padStart(+n, '0'));

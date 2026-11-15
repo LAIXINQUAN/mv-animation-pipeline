@@ -12,7 +12,8 @@
  *   --out=frames         输出目录
  *   --prefix=f_          文件名前缀（生成 f_00000.png …）
  *   --wait=300           首帧前等待毫秒（等字体/SVG 渲染完成）
- *   --quality=png        png | jpeg
+ *   --quality=png        png（锐利但慢）| jpeg（快，长片首选）
+ *   --jpeg-quality=92    jpeg 质量 1-100（默认 92）
  *   --report=http://127.0.0.1:8765   每 N 帧向流水线控制台汇报进度
  *   --report-every=30    汇报间隔（帧）
  *   --chrome=<path>      指定 Chrome/Chromium 可执行文件
@@ -52,6 +53,7 @@ const OUT = path.resolve(flags.out || 'frames');
 const PREFIX = flags.prefix || 'f_';
 const WAIT = parseInt(flags.wait || '300', 10);
 const QUALITY = (flags.quality || 'png').toLowerCase();
+const JPEG_Q = Math.min(100, Math.max(1, parseInt(flags['jpeg-quality'] || '92', 10)));
 const REPORT = flags.report || null;
 const REPORT_EVERY = parseInt(flags['report-every'] || '30', 10);
 const CONCURRENCY = parseInt(flags.concurrency || '1', 10);
@@ -197,7 +199,6 @@ function report(doneFrames, totalFrames) {
 
   const t0 = Date.now();
   const ext = QUALITY === 'jpeg' ? 'jpeg' : 'png';
-  const suffix = ext === 'jpeg' ? '_placeholder' : '';
   let written = 0;
 
   for (let i = 0; i <= total; i++) {
@@ -210,7 +211,7 @@ function report(doneFrames, totalFrames) {
     await page.screenshot({
       path: path.join(OUT, name),
       type: ext,
-      ...(ext === 'jpeg' ? { quality: 92 } : {}),
+      ...(ext === 'jpeg' ? { quality: JPEG_Q } : {}),
     });
     written++;
 

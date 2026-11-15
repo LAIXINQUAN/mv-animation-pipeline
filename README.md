@@ -24,11 +24,12 @@
 # 1) 建项目骨架
 node init.js my-mv --name="我的 MV" --duration=90 --fps=30
 
-# 2) 改 engine/scene.html 与 engine/shots.js 的时间线
+# 2) 改 engine/shots.js 的时间线（scene.html 用 <script src> 自动加载它）
 #    页面须暴露 window.__ready / window.__duration / window.__seek(t)
 
 # 3) 逐帧渲染（用本机 Chrome，或 npm i puppeteer 用自带 Chromium）
-node render.js my-mv/engine/scene.html --end=90 --fps=30 --out=my-mv/frames
+#    长片加 --quality=jpeg：1080p 约 15 帧/秒，PNG 只有 4.5 帧/秒
+node render.js my-mv/engine/scene.html --end=90 --fps=30 --out=my-mv/frames --quality=jpeg
 
 # 4) 合成 + 混音
 node compose.js --frames=my-mv/frames --fps=30 --audio=my-mv/audio/bgm.mp3 --out=my-mv/deliver/video.mp4
@@ -52,13 +53,14 @@ node server.js          # http://127.0.0.1:8765
 node init.js <目录> [--name="项目名"] [--duration=90] [--fps=30] [--w=1920] [--h=1080]
 ```
 
-生成 `brief.md`（六项决策）/ `shots.csv` / `manifest.json` / `engine/scene.html`（**纯 Canvas 2D，零外部依赖**）/ `engine/shots.js`（自动铺满时长的占位时间线）/ `review/` / `audio/` / `frames/` / `deliver/`。
+生成 `brief.md`（六项决策）/ `shots.csv` / `manifest.json` / `engine/scene.html`（**纯 Canvas 2D，零外部依赖**）/ `engine/shots.js`（自动铺满时长的占位时间线，由 `scene.html` 通过 `<script src>` 加载，缺失时页面自动回退）/ `review/` / `audio/` / `frames/` / `deliver/`。
 
 ### `render.js` — 逐帧渲染
 
 ```bash
 node render.js <scene.html> [--start=0] [--end=260] [--fps=24] [--out=frames]
                             [--prefix=f_] [--wait=300] [--quality=png|jpeg]
+                            [--jpeg-quality=92]
                             [--report=http://127.0.0.1:8765] [--report-every=30]
                             [--chrome=<路径>]
 ```
@@ -67,6 +69,7 @@ node render.js <scene.html> [--start=0] [--end=260] [--fps=24] [--out=frames]
 - 只调 `__seek(t)`，不点鼠标、不读系统时间 → **同输入必同输出**
 - 运行期捕获 `pageerror` 与非本地 `requestfailed`，有异常则退出码 1（红线 3 的运行时佐证）
 - `--report` 可把进度实时推给控制台；控制台没开就静默跳过
+- **格式取舍**：`png`（默认）最锐，1080p 实测约 4.5 帧/秒、单帧约 700KB；`jpeg`（`--jpeg-quality` 默认 92）实测约 15 帧/秒、单帧约 90KB。长片（>1000 帧）用 jpeg，成片经 H.264 后肉眼几乎无差
 
 ### `compose.js` — 合成 + 混音
 
@@ -76,6 +79,7 @@ node compose.js [--frames=frames] [--pattern=f_%05d.png] [--fps=24] [--start=0]
                 [--pix-fmt=yuv444p|yuv420p] [--audio-bitrate=192k]
 ```
 
+- `--pattern` 可省略：不给就按帧目录里的实际文件名自动识别（png / jpg 都认）
 - 硬像素建议 `yuv444p`（色度不抽样，边缘不糊）；要最大兼容改 `yuv420p`
 - 已处理两个常见坑：ffmpeg 的 image2 读不了**含中文的绝对路径**（改为在帧目录内用相对模式）；部分发行版把 aac 标为 experimental（自动带 `-strict -2`）
 
@@ -89,10 +93,12 @@ node verify.js [--scene=...] [--frames=...] [--video=...] [--expect-duration=90]
 
 | 分组 | 检查 |
 |---|---|
-| 页面 | 非 0 字节；无外部网络地址；暴露 `__duration`/`__seek`/`__ready`；无 `Math.random()`/`Date.now()`/`new Date()` |
-| 时间线 | `addShot` 无断档无重叠；时长合计等于预期；首镜从 0.0 起 |
+| 页面 | 非 0 字节；引用的本地脚本（`<script src>`，如 `shots.js`）存在；无外部网络地址；暴露 `__duration`/`__seek`/`__ready`；无 `Math.random()`/`Date.now()`/`new Date()` |
+| 时间线 | `addShot` 无断档无重叠；时长合计等于预期；首镜从 0.0 起（内联在 `scene.html` 与写在 `shots.js` 里都认） |
 | 帧序列 | 无 0 字节帧；编号连续无缺帧；帧数 = 时长×fps+1 |
 | 成片 | 含视频流；含音频流（`--audio-required=true` 时强制）；时长误差 ≤ 0.5s |
+
+> 一个检查项都没跑（例如忘了给 `--scene`）时退出码 2，不会假通过。
 
 退出码 0 = 全过，可交付；1 = 有失败项。
 
@@ -105,7 +111,7 @@ node server.js          # http://127.0.0.1:8765
 ## 架构
 
 ```
-pipeline/
+pipeline/   ← 即本仓库根目录
 ├─ server.js        # 零依赖 HTTP 服务（SSE + 状态机 + schema 兜底 + 日志环形缓冲）
 ├─ dashboard.html   # 像素风仪表盘（SSE 实时 + 日志过滤 + 断线重连）
 ├─ init.js          # 项目骨架生成
@@ -123,10 +129,14 @@ pipeline/
 | GET | `/api/state` | 全量状态 |
 | GET | `/api/stream` | SSE 实时流（`state`/`log`/`render` 事件）|
 | GET/POST | `/api/config` | 模型配置读写（合并式，不抹白名单）|
+| POST | `/api/project` | 改项目名 `{project}` |
+| POST | `/api/current` | 改「现在正在干什么」`{agent, role, task, scene, sceneFrame}` |
 | POST | `/api/log` | 追加日志 `{level, msg}` |
 | POST | `/api/stage` | 更新阶段 `{stageId, status, detail, progress}` |
 | POST | `/api/render` | 汇报渲染进度 `{doneFrames, totalFrames}` |
-| GET | `/frames/xxx.png` | 渲染帧图片代理 |
+| GET | `/frames/xxx.png` | 渲染帧图片代理（png / jpg）|
+
+> 帧代理默认读 `<本仓库>/../frames`。项目帧不在那儿时，用 `node server.js --frames=<项目>/frames` 或环境变量 `FRAMES_DIR` 指定。
 
 ## 五阶段流水线
 
