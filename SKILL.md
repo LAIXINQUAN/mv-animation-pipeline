@@ -3,7 +3,7 @@ name: video-animation-pipeline
 description: MV/动画短片制作流水线：主 AI 统筹定方向与分镜，多子 Agent 并行生产镜头单元，独立审核 Agent 五维把关，最后逐帧确定性渲染并合成混音交付；自带五阶段状态机、像素风实时控制台，以及 init/render/compose/verify 四个可直接运行的 Node 命令行工具。当用户要做动画、MV、短片、宣传片，或要把长片拆成镜头并行生产、做分镜表与审核迭代、要逐帧渲染成 mp4、要审核镜头质量、要看流水线实时进度时使用。
 license: MIT
 metadata:
-  version: "1.2.0"
+  version: "1.2.1"
   author: LAIXINQUAN
   repository: https://github.com/LAIXINQUAN/mv-animation-pipeline
   keywords:
