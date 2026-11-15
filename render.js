@@ -62,12 +62,38 @@ if (!fs.existsSync(SCENE)) {
   process.exit(2);
 }
 
+// ---------- 依赖解析（不要求安装在本脚本目录）----------
+const Module = require('module');
+
+/**
+ * 依次在「当前工作目录 → 脚本所在目录 → NODE_PATH」里找模块。
+ * 使用者通常在自己项目目录下执行 `node <path>/render.js`，依赖装在项目里，
+ * 直接 require() 会从脚本目录解析而报 Cannot find module。
+ */
+function requireFrom(name) {
+  const bases = [process.cwd(), __dirname];
+  for (const b of bases) {
+    try {
+      return Module.createRequire(path.join(b, 'noop.js'))(name);
+    } catch (_) { /* 继续下一个 */ }
+  }
+  try { return require(name); } catch (_) { /* 交给下面报错 */ }
+  const err = new Error(
+    `缺少依赖 ${name}。请任选一种安装方式：\n` +
+    `  cd ${process.cwd()} && npm i ${name}      # 装在当前项目\n` +
+    `  cd ${__dirname} && npm i ${name}          # 装在工具目录\n` +
+    `  npm i -g ${name}                          # 全局（需配 NODE_PATH）`
+  );
+  err.code = 'MODULE_MISSING';
+  throw err;
+}
+
 // ---------- 解析浏览器 ----------
 function resolveChrome() {
   if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) return process.env.CHROME_PATH;
   try {
     // 优先用完整版 puppeteer 自带的 Chromium（无需系统安装）
-    const puppeteer = require('puppeteer');
+    const puppeteer = requireFrom('puppeteer');
     const p = puppeteer.executablePath();
     if (p && fs.existsSync(p)) return p;
   } catch (_) { /* 没装完整版，继续找系统 Chrome */ }
@@ -110,7 +136,7 @@ function report(doneFrames, totalFrames) {
   let launcher;
   if (exe) {
     // 用 puppeteer-core + 指定浏览器
-    const pc = require('puppeteer-core');
+    const pc = requireFrom('puppeteer-core');
     launcher = () => pc.launch({
       executablePath: exe,
       headless: 'new',
@@ -118,7 +144,7 @@ function report(doneFrames, totalFrames) {
              '--force-device-scale-factor=1', '--font-render-hinting=none'],
     });
   } else {
-    const p = require('puppeteer');
+    const p = requireFrom('puppeteer');
     launcher = () => p.launch({ headless: 'new', args: ['--no-sandbox', '--disable-gpu'] });
   }
 
