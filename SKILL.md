@@ -1,6 +1,21 @@
 ---
-name: mv-animation-pipeline
-description: MV/动画短片制作流水线：主 AI 统筹定方向与分镜，多子 Agent 并行生产镜头单元，独立审核 Agent 五维把关，最后逐帧确定性渲染并合成混音交付；自带 init/render/compose/verify 四个 Node 命令行工具和像素风实时控制台。用户要求制作动画、MV、短片、宣传片，需要把长动画拆分成可并行镜头生产、做分镜表与审核迭代、逐帧截图渲染成片，或查看流水线实时进度时使用。
+name: video-animation-pipeline
+description: MV/动画短片制作流水线：主 AI 统筹定方向与分镜，多子 Agent 并行生产镜头单元，独立审核 Agent 五维把关，最后逐帧确定性渲染并合成混音交付；自带五阶段状态机、像素风实时控制台，以及 init/render/compose/verify 四个可直接运行的 Node 命令行工具。当用户要做动画、MV、短片、宣传片，或要把长片拆成镜头并行生产、做分镜表与审核迭代、要逐帧渲染成 mp4、要审核镜头质量、要看流水线实时进度时使用。
+license: MIT
+metadata:
+  version: "1.2.0"
+  author: LAIXINQUAN
+  repository: https://github.com/LAIXINQUAN/mv-animation-pipeline
+  keywords:
+    - animation
+    - mv
+    - video
+    - pipeline
+    - sub-agent
+    - review
+    - 动画
+    - 分镜
+    - 渲染
 ---
 
 # SKILL · 视频动画制作多 Agent 流水线
@@ -168,6 +183,19 @@ UI 保存后写入 `config.json.defaultModel`。主 AI 下次 spawn/派单时读
 | 现实色调 | 暖阳田野 `#f6e3c0`→`#a8c8e8` + 麦浪 + 樱花 + 飞鸟 |
 | 节奏 | 单镜 1.5–3.5s（副歌 ≤2.5s），对齐歌词句点切分 |
 | 审核流程 | 生产 100 镜 → round1 84 分打回 → 修复 → round2 93 分通过 |
+
+### 9.1 踩过的坑（复用前先看）
+
+| 症状 | 根因 | 修法 |
+|---|---|---|
+| 字幕区随机闪出棕褐色小块 | 字幕底板用半透明填充（alpha≈150），下方月亮/萤火虫/心形/亮窗等**亮元素透出后被压暗**，混成脏褐色；这些元素在动所以随机出现 | 底板改**不透明**。可读性与画面干净优先于"透一点点背景" |
+| 某镜头角色变成窄条、只剩一只眼 | `orientation:'side'` 走了独立绘制分支，与"严格左右轴对称"规范冲突 | 侧身**回落为对称正面**渲染，或重写完整侧向绘制；不要留半成品分支 |
+| ffmpeg 报 `Could find no file with path ... index in the range 0-4` | image2 demuxer 打不开**含中文的绝对路径** | 切到帧目录内用相对模式 `-i f_%05d.png` |
+| ffmpeg 报 `The encoder 'aac' is experimental` | 部分发行版把 aac 标为实验性 | 加 `-strict -2` |
+| `render.js` 报 `Cannot find module 'puppeteer-core'` | 依赖装在项目目录，脚本在别处，`require` 只从脚本目录解析 | 按 `cwd → 脚本目录 → NODE_PATH` 依次解析（v1.1.1 已内置） |
+| 渲染出的画布尺寸不对（如 1280×720 被截成 800×600） | 视口按 `window.innerWidth` 设，没按画布设 | 优先读 `document.querySelector('canvas').width/height` |
+
+**验收这些坑的通用手段**：不要只看单帧。字幕类问题要**全片随机抽帧扫色**——固定几个色值在字幕带内统计出现次数，修复前单帧能到几百，修复后应为 0。
 
 ## 十、给 AI 的调用指引
 

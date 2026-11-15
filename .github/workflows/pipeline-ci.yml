@@ -13,6 +13,9 @@ on:
       - 'render.js'
       - 'compose.js'
       - 'verify.js'
+      - 'SKILL.md'          # 有 frontmatter 校验，改它必须触发
+      - 'state.json.example'
+      - '.github/workflows/pipeline-ci.yml'
   pull_request:
 
 jobs:
@@ -29,10 +32,43 @@ jobs:
 
       - name: Syntax check
         run: |
-          for f in server.js render.js compose.js verify.js init.js; do
+          for f in server.js render.js compose.js verify.js init.js check-skill.js; do
             echo "== $f =="
             node --check $f
           done
+
+      - name: SKILL.md check (same as local check-skill.js)
+        run: node check-skill.js SKILL.md
+
+      - name: SKILL.md frontmatter check (inline, independent of local script)
+        run: |
+          python3 - <<'PY'
+          import sys, re
+          raw = open('SKILL.md', 'rb').read()
+          if raw.startswith(b'\xef\xbb\xbf'):
+              sys.exit('SKILL.md 带 UTF-8 BOM（\\ufeff），frontmatter 会失效，请存为无 BOM')
+          t = raw.decode('utf-8')
+          if not t.startswith('---'):
+              sys.exit('SKILL.md 未以 YAML frontmatter (---) 开头')
+          end = t.index('\n---', 3)
+          fm = t[3:end]
+          for k in ('name:', 'description:'):
+              if k not in fm:
+                  sys.exit(f'frontmatter 缺少必需字段 {k}')
+          name = re.search(r'^name:\s*(.+)$', fm, re.M).group(1).strip()
+          if not re.fullmatch(r'[a-z0-9-]{1,64}', name):
+              sys.exit(f'name 不合规（需小写+连字符，<=64 字符）: {name}')
+          desc = re.search(r'^description:\s*(.+)$', fm, re.M).group(1).strip()
+          if len(desc) > 1024:
+              sys.exit(f'description 过长（{len(desc)} > 1024）')
+          try:
+              import yaml
+              yaml.safe_load(fm)
+              print('YAML 解析通过')
+          except ModuleNotFoundError:
+              print('（未装 PyYAML，跳过深度解析，仅做结构检查）')
+          print(f'frontmatter OK: name={name}, description={len(desc)} 字符, 无 BOM')
+          PY
 
       - name: init.js smoke test
         run: |
