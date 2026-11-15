@@ -3,6 +3,7 @@
 一套**主 AI 统筹 + 多子 Agent 并行生产 + 独立审核 + 逐帧渲染**的动画生产流水线，附带像素风实时控制台和从零到成片的四个命令行工具。
 
 > **给 AI 用**：直接读 [SKILL.md](SKILL.md)，即可掌握整条流水线的调度方法。
+> `SKILL.md` 带标准 YAML frontmatter（`name` / `description` / `license` / `metadata`），可被 Claude Code、Cursor、DSH 等工具的 skill 加载器直接识别；CI 里会校验该头部的合法性，防止改坏。
 > 本项目是《Take Me Hand》MV 的实际落地实现，全片 260 秒、105 镜、1920×1080、24fps，纯代码（p5.js 硬像素风格）生成，无任何图像生成模型。
 
 ---

@@ -1,3 +1,23 @@
+---
+name: video-animation-pipeline
+description: 主 AI 统筹、多子 Agent 并行生产、独立审核、逐帧渲染的动画/MV/短片生产流水线；含五阶段状态机、像素风实时控制台，以及 init/render/compose/verify 四个可直接运行的命令行工具。当用户要做动画、MV、短片、宣传片，或要把长片拆成镜头并行生产、要逐帧渲染成 mp4、要审核镜头质量时使用。
+license: MIT
+metadata:
+  version: "1.1.1"
+  author: LAIXINQUAN
+  repository: https://github.com/LAIXINQUAN/mv-animation-pipeline
+  keywords:
+    - animation
+    - mv
+    - video
+    - pipeline
+    - sub-agent
+    - review
+    - 动画
+    - 分镜
+    - 渲染
+---
+
 # SKILL · 视频动画制作多 Agent 流水线
 
 > 一套「主 AI 统筹 + 多子 Agent 并行生产 + 独立审核 + 逐帧渲染」的动画生产流水线，附带像素风实时控制台。
