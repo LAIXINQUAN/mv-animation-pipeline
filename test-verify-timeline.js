@@ -77,6 +77,32 @@ addShot(3, 6, (t, lf) => shotExample(t, lf));
     wantText: '时间线无断档/无重叠  — #2 2->3',
     forbidText: null,
   },
+  {
+    // 注释里常写 addShot(...) 当文档，不能被当成"变量写法"而误报
+    name: '注释中含 addShot',
+    body: `/* 每个 addShot(s, e, fn) 是一个镜头。
+   示例：addShot(0, 3.2, handler) */
+// 也支持 addShot(start, end, fn) 这种写法
+addShot(0, 3, (t, lf) => shotExample(t, lf));
+addShot(3, 6, (t, lf) => shotExample(t, lf));
+`,
+    expectDur: 6,
+    wantCode: 0,
+    wantText: '时间线无断档/无重叠',
+    forbidText: 'FAIL',
+  },
+  {
+    // 注释掉的旧分镜行不应该参与统计
+    name: '注释掉的旧分镜',
+    body: `addShot(0, 3, (t, lf) => shotExample(t, lf));
+// addShot(3, 6, (t, lf) => shotExample(t, lf));   // 暂时停用
+addShot(3, 6, (t, lf) => shotExample(t, lf));
+`,
+    expectDur: 6,
+    wantCode: 0,
+    wantText: '时间线无断档/无重叠',
+    forbidText: 'FAIL',
+  },
 ];
 
 let failed = 0;

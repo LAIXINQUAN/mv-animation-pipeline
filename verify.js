@@ -151,16 +151,21 @@ if (SCENE && fs.existsSync(SCENE)) {
   });
   const code = [pageCode, ...mineScripts.map((f) => f.code)].join('\n');
 
-  // 先剔除 addShot 自身的函数定义（function addShot(s, e, fn) / const addShot = ...），
-  // 否则会把形参 s,e 当成一处"非字面量调用"
-  // 再剔除 init 模板自带的兜底循环 if (!SHOTS.length) { for (…) addShot(s, …) } ——
-  // 那是占位逻辑，不是分镜
-  const callCode = stripBlock(
-    code
-      .replace(/function\s+addShot\s*\([^)]*\)/g, '')
-      .replace(/(?:const|let|var)\s+addShot\s*=\s*(?:function\s*)?\([^)]*\)/g, ''),
-    /if\s*\(\s*!\s*SHOTS\.length\s*\)\s*\{/g
-  );
+  // 分三步把「不是分镜」的 addShot 全部排除，否则会误报"有变量写法"：
+  //   1) 去掉注释 —— 注释里常写 addShot(s, e, fn) 当文档
+  //   2) 去掉 addShot 自身定义 —— function addShot(s, e, fn) / const addShot = …
+  //   3) 去掉 init 模板的兜底循环 if (!SHOTS.length) { for (…) addShot(s, …) }
+  const noComment = code
+    // 块注释（含 JSDoc / 多行说明）
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    // 行注释：前面不是冒号（避免误伤 http://），一直吃到行尾
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+
+  const noDef = noComment
+    .replace(/function\s+addShot\s*\([^)]*\)/g, '')
+    .replace(/(?:const|let|var)\s+addShot\s*=\s*(?:function\s*)?\([^)]*\)/g, '');
+
+  const callCode = stripBlock(noDef, /if\s*\(\s*!\s*SHOTS\.length\s*\)\s*\{/g);
 
   // 字面量必须"完整"：数字后紧跟 , 或 )，否则 6+D 会被读成 6
   const NUM = '(-?\\d+(?:\\.\\d+)?)\\s*(?=[,)])';
