@@ -3,7 +3,7 @@ name: video-animation-pipeline
 description: MV/动画短片制作流水线：主 AI 统筹定方向与分镜，多子 Agent 并行生产镜头单元，独立审核 Agent 五维把关，最后逐帧确定性渲染并合成混音交付；自带五阶段状态机、像素风实时控制台，以及 init/render/compose/verify 四个可直接运行的 Node 命令行工具。当用户要做动画、MV、短片、宣传片，或要把长片拆成镜头并行生产、做分镜表与审核迭代、要逐帧渲染成 mp4、要审核镜头质量、要看流水线实时进度时使用。
 license: MIT
 metadata:
-  version: "1.2.1"
+  version: "1.3.0"
   author: LAIXINQUAN
   repository: https://github.com/LAIXINQUAN/mv-animation-pipeline
   keywords:
@@ -194,6 +194,10 @@ UI 保存后写入 `config.json.defaultModel`。主 AI 下次 spawn/派单时读
 | ffmpeg 报 `The encoder 'aac' is experimental` | 部分发行版把 aac 标为实验性 | 加 `-strict -2` |
 | `render.js` 报 `Cannot find module 'puppeteer-core'` | 依赖装在项目目录，脚本在别处，`require` 只从脚本目录解析 | 按 `cwd → 脚本目录 → NODE_PATH` 依次解析（v1.1.1 已内置） |
 | 渲染出的画布尺寸不对（如 1280×720 被截成 800×600） | 视口按 `window.innerWidth` 设，没按画布设 | 优先读 `document.querySelector('canvas').width/height` |
+| 静态检查报「有外部网络地址 / 有 `Math.random()`」但自己没写 | 把第三方库（`p5.min.js` 等）也并进了红线扫描，库本身带 URL 和随机数 | `verify.js` 已按文件名与体积分流第三方库，只扫自写脚本 |
+| 时间线改成 `addShot(A, B, …)` 后校验直接「跳过」并给绿灯 | 正则需要字面量数字；变量形式读不到就静默少算 | `verify.js` 现在会判失败并点名"请写成 `addShot(0, 3.2, …)`"；`addShot` 自身的函数定义与 init 兜底循环已排除，不会误报 |
+| 看板「最新帧」404，实际是 `.jpg` | `lastFrame` 硬编码 `.png`，而 `--quality=jpeg` 产出 `.jpg` | `reportProgress` 改为读帧目录实际扩展名（`frameExt`），png/jpg 都跟随 |
+| `curl -d '{...中文...}'` 写进去变乱码 | 发送端没按 UTF-8 编码（PowerShell 的 `-Body` 默认不是 UTF-8） | 发送端显式 UTF-8；`server.js` 侧统一用 `readBody` 按 UTF-8 解码，双向都稳 |
 
 **验收这些坑的通用手段**：不要只看单帧。字幕类问题要**全片随机抽帧扫色**——固定几个色值在字幕带内统计出现次数，修复前单帧能到几百，修复后应为 0。
 

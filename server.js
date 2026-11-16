@@ -125,6 +125,40 @@ function setStage(stageId, status, detail, progress) {
   return { ok: true, stage: st };
 }
 
+// ---- 请求体读取（统一 UTF-8）----
+/**
+ * 读请求体并按 UTF-8 解码。
+ * 直接用 `body += chunk` 会让 Node 按 latin1 把 Buffer 转成字符串，
+ * 中文一到 POST 就变成 "æ»å¯¼æ¼" 这种乱码（项目名、看板文案都会烂）。
+ */
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (d) => {
+      chunks.push(d);
+      size += d.length;
+      if (size > 32 * 1024 * 1024) {           // 32MB 上限，防止恶意请求撑爆内存
+        reject(new Error('请求体过大'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+/** 读 body 并 JSON.parse，失败抛出带可读信息的错误 */
+async function readJSONBody(req) {
+  const raw = await readBody(req);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    throw new Error('请求体不是合法 JSON: ' + e.message);
+  }
+}
+
 // ---- 项目名 / 当前任务 ----
 function setProject(project) {
   const s = ensureSchema(readJSON(STATE));
@@ -153,16 +187,40 @@ function setCurrent(patch) {
   return { ok: true, current: s.current };
 }
 
+/**
+ * 推断帧文件扩展名：看帧目录里实际存在的是 .png 还是 .jpg。
+ * render.js --quality=jpeg 产出的是 .jpg，硬编码 .png 会让看板的
+ * 「最新帧」永远 404。
+ */
+function detectFrameExt() {
+  try {
+    const names = fs.readdirSync(FRAMES_DIR).filter((n) => /^f_\d+\.(png|jpe?g)$/i.test(n));
+    if (!names.length) return 'png';
+    // 取最新一张判断
+    names.sort();
+    const last = names[names.length - 1];
+    return path.extname(last).slice(1).toLowerCase().replace('jpeg', 'jpg');
+  } catch (_) {
+    return 'png';
+  }
+}
+
 // ---- 渲染进度更新（高频，走轻量写盘 + SSE）----
-function reportProgress(doneFrames) {
+function reportProgress(doneFrames, totalFrames) {
   const s = ensureSchema(readJSON(STATE));
   s.render.doneFrames = doneFrames;
-  s.render.lastFrame = doneFrames > 0 ? `f_${String(doneFrames).padStart(5, '0')}.png` : null;
+  // 报告里带了总数就同步，避免看板用旧的 totalFrames 算出 >100% 的进度
+  const tf = parseInt(totalFrames, 10);
+  if (Number.isFinite(tf) && tf > 0) s.render.totalFrames = tf;
+  // 扩展名跟着帧目录实际文件走（png / jpg 都可能）
+  s.render.frameExt = detectFrameExt();
+  const pad = String(doneFrames).padStart(5, '0');
+  s.render.lastFrame = doneFrames > 0 ? `f_${pad}.${s.render.frameExt}` : null;
   s.updatedAt = new Date().toISOString();
   writeJSON(STATE, s);
   invalidate();
   broadcast('render', s.render);
-  return { ok: true, doneFrames };
+  return { ok: true, doneFrames, totalFrames: s.render.totalFrames, frameExt: s.render.frameExt };
 }
 
 const server = http.createServer((req, res) => {
@@ -197,11 +255,9 @@ const server = http.createServer((req, res) => {
       return res.end(JSON.stringify(c));
     }
     if (req.method === 'POST') {
-      let body = '';
-      req.on('data', d => body += d);
-      req.on('end', () => {
+      (async () => {
         try {
-          const incoming = JSON.parse(body);
+          const incoming = await readJSONBody(req);
           const cur = readJSON(CONFIG) || {};
           const merged = Object.assign({}, cur, incoming);
           if (incoming.defaultModel) {
@@ -213,25 +269,24 @@ const server = http.createServer((req, res) => {
           writeJSON(STATE, s);
           invalidate();
           broadcast('state', s);
-          appendLog('info', `模型配置更新: producer=${merged.defaultModel.producer} reviewer=${merged.defaultModel.reviewer}`);
+          const dm = merged.defaultModel || {};
+          appendLog('info', `模型配置更新: producer=${dm.producer} reviewer=${dm.reviewer}`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, model: merged.defaultModel }));
         } catch (e) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: String(e) }));
         }
-      });
+      })();
       return;
     }
   }
 
   // ---- 项目名 ----
   if (p === '/api/project' && req.method === 'POST') {
-    let body = '';
-    req.on('data', d => body += d);
-    req.on('end', () => {
+    (async () => {
       try {
-        const { project } = JSON.parse(body);
+        const { project } = await readJSONBody(req);
         const r = setProject(project);
         if (r.ok) appendLog('info', `项目名 → ${r.project}`);
         res.writeHead(r.ok ? 200 : 400, { 'Content-Type': 'application/json' });
@@ -240,53 +295,47 @@ const server = http.createServer((req, res) => {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: String(e) }));
       }
-    });
+    })();
     return;
   }
 
   // ---- 当前任务（agent/role/task/scene/sceneFrame/frameTime）----
   if (p === '/api/current' && req.method === 'POST') {
-    let body = '';
-    req.on('data', d => body += d);
-    req.on('end', () => {
+    (async () => {
       try {
-        const r = setCurrent(JSON.parse(body));
+        const r = setCurrent(await readJSONBody(req));
         res.writeHead(r.ok ? 200 : 400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(r));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: String(e) }));
       }
-    });
+    })();
     return;
   }
 
   // ---- 日志 ----
   if (p === '/api/log') {
     if (req.method === 'POST') {
-      let body = '';
-      req.on('data', d => body += d);
-      req.on('end', () => {
+      (async () => {
         try {
-          const { level, msg } = JSON.parse(body);
+          const { level, msg } = await readJSONBody(req);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(appendLog(level || 'info', msg || '')));
         } catch (e) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: String(e) }));
         }
-      });
+      })();
       return;
     }
   }
 
   // ---- 阶段状态更新 ----
   if (p === '/api/stage' && req.method === 'POST') {
-    let body = '';
-    req.on('data', d => body += d);
-    req.on('end', () => {
+    (async () => {
       try {
-        const { stageId, status, detail, progress } = JSON.parse(body);
+        const { stageId, status, detail, progress } = await readJSONBody(req);
         const r = setStage(stageId, status, detail, progress);
         if (r.ok) appendLog('info', `阶段 ${stageId} → ${status}${detail ? ' (' + detail + ')' : ''}`);
         res.writeHead(r.ok ? 200 : 400, { 'Content-Type': 'application/json' });
@@ -295,24 +344,22 @@ const server = http.createServer((req, res) => {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: String(e) }));
       }
-    });
+    })();
     return;
   }
 
   // ---- 渲染进度汇报 ----
   if (p === '/api/render' && req.method === 'POST') {
-    let body = '';
-    req.on('data', d => body += d);
-    req.on('end', () => {
+    (async () => {
       try {
-        const { doneFrames } = JSON.parse(body);
+        const { doneFrames, totalFrames } = await readJSONBody(req);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(reportProgress(parseInt(doneFrames) || 0)));
+        res.end(JSON.stringify(reportProgress(parseInt(doneFrames) || 0, totalFrames)));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: String(e) }));
       }
-    });
+    })();
     return;
   }
 

@@ -15,6 +15,8 @@ on:
       - 'verify.js'
       - 'SKILL.md'          # 有 frontmatter 校验，改它必须触发
       - 'state.json.example'
+      - 'check-skill.js'
+      - 'test-verify-timeline.js'
       - '.github/workflows/pipeline-ci.yml'
   pull_request:
 
@@ -32,13 +34,16 @@ jobs:
 
       - name: Syntax check
         run: |
-          for f in server.js render.js compose.js verify.js init.js check-skill.js; do
+          for f in server.js render.js compose.js verify.js init.js check-skill.js test-verify-timeline.js; do
             echo "== $f =="
             node --check $f
           done
 
       - name: SKILL.md check (same as local check-skill.js)
         run: node check-skill.js SKILL.md
+
+      - name: Timeline detection regression (verify.js)
+        run: node test-verify-timeline.js
 
       - name: SKILL.md frontmatter check (inline, independent of local script)
         run: |
